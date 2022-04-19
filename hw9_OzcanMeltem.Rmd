@@ -1,0 +1,222 @@
+---
+title: "Preliminary Analysis"
+author: Meltem Ozcan
+date: "April 12, 2022"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(blavaan)
+library(dplyr)
+library(bayesplot)
+library(posterior)
+source('573_helper.R')
+```
+
+
+The goal of this project is to build Bayesian credible intervals around selection (classification) accuracy indices computed for the reference and focal groups in a selection setting as described in Millsap \& Kwok, 2004.
+
+### Description of variables
+The data I use in the illustrative example for this methodological 
+project were collected in 1994-1996 as part of efforts to develop the International
+personality Item Pool (Donnellan et al., 2006; Goldberg
+et al., 2006) and were previously used in studies of measurement invariance (Lai and Zhang, 2022; Ock et. al, 2020). The dataset contains 564 participants' item-level scores on the Mini-IPIP, which is a short personality inventory made up of 5 facets: Agreeableness, Extraversion, Openness to Experience, Neuroticism, and Conscientiousness. Each personality dimension is measured with 4 items on a 1-5 Likert scale. 
+
+In this preliminary analysis I focus on the Agreeableness factor which has the following four items: a2, a5, a7, and a9.  
+
+- a2 "Sympathize with others’ feelings."
+- a5 "Feel others’ emotions."
+- a7 "Am not really interested in others." (R)
+- a9 "Am not interested in other people’s problems." (R)
+
+The fifth variable we have in the 'agree' dataset is sex, where males (N=239) are coded as "1" and females (N=325) as "2".
+
+
+### Mathematical expressions of model and priors
+The strength of a participant's endorsement of each item  (observed values) is thoughtto be driven by the participant's underlying (true) level of the unobservable (latent) construct of interest. The observed variables (a2, a5, a7, a9) and the latent variable(s) (A) are connected via a linear system of equations under the common factor model.
+
+Model specification:
+
+- $X$: N x J matrix of observed values
+
+- J: number of observed variables (j=1,...J; here we have J=4)
+
+- N: number of individuals in dataset (i=1,...,N; here we have N=564)
+
+- $\eta$: latent variable values (N x 1 vector) 
+
+- $\alpha$: latent factor mean 
+
+- $\psi$: latent factor variance
+
+- $\lambda$: vector of factor loadings (J x 1 vector)
+
+- $\nu$: measurement intercepts (observed) (J x 1 vector)
+
+- $\theta$: diagonal matrix of the unique factor variances
+
+\begin{align*}
+\underbrace{p(\boldsymbol{\eta},\alpha,\psi,\boldsymbol{\nu},\boldsymbol{\Lambda},
+\boldsymbol{\theta}|\boldsymbol{X})}_{\text{posterior distribution }} 
+&\propto \underbrace{p(\boldsymbol{X}|\boldsymbol{\eta},\alpha,\psi,\boldsymbol{\nu}\boldsymbol{\Lambda},\boldsymbol{\theta})}_{\text{conditional dist. of obs.v.}} \times \underbrace{p(\boldsymbol{\eta},\alpha,\psi,\boldsymbol{\Lambda},
+\boldsymbol{\theta})}_{\text{joint dist. of priors}}  \\
+&= p(\boldsymbol{X}|\boldsymbol{\eta},\boldsymbol{\nu},\boldsymbol{\Lambda},\boldsymbol{\theta})
+p(\boldsymbol{\eta}|\alpha,\psi)  p(\alpha) p(\psi) p(\boldsymbol{\nu})p(\boldsymbol\Lambda)p(\boldsymbol\theta)\\
+&=\prod_{i=1}^{N}\prod_{j=1}^{j} p(x_{ij}|\eta_{i},\nu_i, \boldsymbol{\lambda}_j,\theta_{jj})p(\eta_i|\alpha,\psi)p(\alpha)p(\psi)p(\nu_j)p(\lambda_{j})p(\theta_{jj})
+\end{align*}
+
+where, plugging in values for hyperparameters as specified by default in \texttt{blavaan} (will be covered later in the document), 
+
+\begin{align*}
+x_{ij}|\eta_{i},\nu_i, \boldsymbol{\lambda}_j,\theta_{jj} &\sim N(\nu_j +\eta_i\boldsymbol{\lambda}_j', \theta_{jj}) \\
+ \eta_i|\alpha,\psi&\sim N(\alpha, \psi)\\
+\alpha&\sim n(0,10)\\
+1/\psi&\sim \text{Gamma}(0.5, 1)\\
+\nu_j&\sim N(0,32)\\
+\lambda_{j}&\sim  N(0, 10)\\
+\theta_{jj}&\sim \text{Beta}(1,1)
+\end{align*}
+
+### Code for running Bayesian analyses
+```{r data-prep}
+data <- read.table("IPIPFFM.dat", header = TRUE)
+agree <- data[, c("sex", "a2", "a5", "a7", "a9")]
+head(agree)
+```
+
+```{r cfa-model}
+m_a <- 'A =~  a2 + a5  + a7 + a9
+          a2 ~~ a5'
+```
+
+```{r bcfa_agree}
+set.seed(7)
+agree_fit <- bcfa(m_a, data = agree, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("a2 ~ 1"), 
+               std.lv = TRUE, save.lvs = TRUE, n.chains = 3)
+summary(agree_fit)
+blavInspect(agree_fit, "est")
+```
+
+### A convergence check of MCMC
+```{r agree_convergence_prep}
+# Check for convergence, mixing
+a_mcmc <- blavInspect(agree_fit, "mcmc") # mcmc draws for each parameter
+a_mcmc3 <- rbind(a_mcmc[[1]], a_mcmc[[2]], a_mcmc[[3]]) # combine chains
+a_draws <- a_mcmc3[,c(1:13,18,23,24,28)] # remove duplicates from combined chain
+a_mcmc[[1]] <- a_mcmc[[1]][,c(1:13,18,23,24,28)] # remove duplicates in each chain
+a_mcmc[[2]] <- a_mcmc[[2]][,c(1:13,18,23,24,28)]
+a_mcmc[[3]] <- a_mcmc[[3]][,c(1:13,18,23,24,28)]
+
+colnames(a_draws) <- colnames(a_mcmc[[1]]) <- colnames(a_mcmc[[2]]) <-
+  colnames(a_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                             "Theta_cov_f", "Theta_var1", "Theta_var2", 
+                             "Theta_var3", "Theta_var4", "nu1_f", "nu2", "nu3", 
+                             "nu4", "Theta_cov_r", "Psi_r", "nu1_r", "alpha_r" )
+
+```
+
+```{r agree-convergence}
+mcmc_trace(a_mcmc) 
+mcmc_rank_hist(a_mcmc)
+```
+```{r}
+a_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+The trace plots indicate good mixing and suggest that the three chains sampled the same target distribution as the lines frequently cros and explore the same region.
+The rank histograms give support to this finding as we see that the distributions
+appear to be approximately uniform for each model parameter for each chain. The 
+R-hat value equaling 1 for each parameter suggests little between-chain variability,
+indicating convergence. We see that while ESS is slightly lower for the tail regions, both bulk-ESS and tail-ESS are large enough to allow us to conclude that
+the chains converged. 
+
+
+
+### A table and/or a figure showing the posterior distributions of the key model parameters
+
+```{r agree_post_dist_parameters}
+# Now combining the chains
+a_draws %>%
+    summarize_draws() %>% knitr::kable(digits = 2)
+
+```
+
+```{r areas}
+a_draws %>%
+    mcmc_areas()
+```
+
+
+Determining the priors on model parameters:
+```{r dp}
+blavInspect(agree_fit, "dp")
+```
+
+
+\begin{align*}
+x_{ij}|\eta_{i},\nu_i, \boldsymbol{\lambda}_j,\theta_{jj} &\sim N(\nu_j +\eta_i\boldsymbol{\lambda}_j', \theta_{jj}) \\
+ \eta_i|\alpha,\psi&\sim N(\alpha, \psi)\\
+\alpha&\sim n(0,10)\\
+1/\psi&\sim \text{Gamma}(0.5, 1)\\
+\nu_j&\sim N(0,32)\\
+\lambda_{j}&\sim  N(0, 10)\\
+\theta_{jj}&\sim \text{Beta}(1,1)
+\end{align*}
+
+#### Classification accuracy indices, interpretation of results
+
+```{r}
+# Posterior distribution of the latent variable conditioned on the observed
+# variables
+agree_fit.lvs <- blavInspect(agree_fit, "lvs") #list of 3, each is 1000 x 564
+agree_post_eta <- rbind(agree_fit.lvs[[1]], agree_fit.lvs[[2]],
+                        agree_fit.lvs[[3]]) #combine the chains
+# The posterior expected value of observed variables conditioned on the sampled
+# latent variables
+agree_fit.ypred <- blavPredict(agree_fit, type = "ypred")
+agree_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode = "list", length = 3000)
+for(i in seq_along(1:length(agree_fit.ypred))){
+  agree_post_z[,i] <- t(rowSums(agree_fit.ypred[[i]]))
+}
+
+agree_post_CAI <- get_posterior_CAI(agree_post_eta, 
+                                    t(agree_post_z), 0.15, agree$sex,
+                                    ref = "2", foc = "1")
+```
+
+```{r overall}
+# Overall classification accuracy indices
+agree_post_CAI$overall %>%
+    summarize_draws() %>%
+    knitr::kable(digits=2)
+```
+
+```{r ref}
+# Reference group classification accuracy indices
+agree_post_CAI$reference %>%
+    summarize_draws() %>%
+    knitr::kable(digits=2)
+```
+
+```{r foc}
+# Focal group classification accuracy indices
+agree_post_CAI$focal %>%
+    summarize_draws() %>%
+    knitr::kable(digits=2)
+```
+
+
+We see that PS is higher for the reference group (PS=0.203, 90\% CI=[0.18, 0.22]) compared
+to the focal group (PS=0.09, 90\% CI=[0.05, 0.10]). Similarly, SR and SE are higher in
+the reference group than the focal group, and the CI for these two indices are wider
+in comparison to other indices such as PS and SP.  Finally, the test appears to be
+more successful at excluding unqualified candidates in the focal group
+compared to the reference group (as SP_f = 0.96 with 90\% CI_f = [0.94, 0.98] as
+opposed to  SP_r = 0.90 with 90\% CI_r = [0.87, 0.92]). 
+
+
+
