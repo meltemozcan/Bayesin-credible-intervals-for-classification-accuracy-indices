@@ -1,0 +1,584 @@
+---
+title: "573project"
+author: "Meltem Ozcan"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r read-functions, message=FALSE, warning=FALSE}
+library(blavaan) # to fit Bayesian latent variable models
+library(dplyr)
+library(bayesplot)
+library(posterior)
+library(here)
+source('573_helper.R') #read in helper functions
+```
+
+```{r data-prep}
+data <- read.table("IPIPFFM.dat", header = TRUE)
+head(data)
+agree_m <- data[data$sex == 1, c("a2", "a5", "a7", "a9")] #239 males
+agree_f <- data[data$sex == 2, c("a2", "a5", "a7", "a9") ] #325 females
+agree <- data[, c("sex", "a2", "a5", "a7", "a9")]
+consc <- data[, c("sex", "c3", "c4", "c8", "c9")]
+extr <- data[, c("sex", "e1", "e4", "e6", "e7")]
+neur <- data[, c("sex", "n1", "n2", "n6", "n8")]
+open <- data[, c("sex", "i2", "i8", "i9", "i10")]  
+```
+
+## Fit Bayesian CFA and compute posteriors
+
+```{r cfa-models}
+m_a <- 'A =~  a2 + a5  + a7 + a9
+          a2 ~~ a5'
+m_c <- 'C =~  c3 + c4 + c8 + c9'
+m_e <- 'E =~ e1 + e4 + e6 + e7
+          e4 ~~ e7  '
+m_n <- 'N =~ n1 + n2 + n6 + n8'
+m_o <- 'O =~ i2 + i8 + i9 + i10
+          i2 ~~ i10
+          i8 ~~ i9'
+```
+
+### Fit Bayesian CFA and compute posteriors: Agreeableness 
+
+```{r bcfa_agree}
+set.seed(7)
+
+agree_fit <- bcfa(m_a, data = agree, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("a2 ~ 1"), 
+               std.lv = TRUE, save.lvs = TRUE, n.chains = 3)
+summary(agree_fit)
+blavInspect(agree_fit, "est")
+
+#Get the posterior distribution of the latent variable conditioned on the
+#observed variables
+agree_fit.lvs <- blavInspect(agree_fit, "lvs") #list of 3, each is 1000 x 564
+agree_post_eta <- rbind(agree_fit.lvs[[1]], agree_fit.lvs[[2]],
+                           agree_fit.lvs[[3]]) #combine the chains
+#The posterior expected value of observed variables conditioned on the sampled latent variables
+agree_fit.ypred <- blavPredict(agree_fit, type = "ypred")
+#dim(agree_fit.ypred[[1]]) # agree_fit.ypred = list of 3000, each 564 x 4.
+
+agree_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode = "list", length = 3000)
+for(i in seq_along(1:length(agree_fit.ypred))){
+  agree_post_z[,i] <- t(rowSums(agree_fit.ypred[[i]]))
+}
+
+agree_post_CAI <- get_posterior_CAI(agree_post_eta, 
+                                    t(agree_post_z), 0.15, agree$sex,
+                                    ref = "2", foc = "1")
+```
+
+### Fit Bayesian CFA and compute posteriors: Conscientiousness 
+```{r bcfa_consc}
+set.seed(7)
+
+consc_fit <- bcfa(m_c, data = consc, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("c3 ~ 1"), 
+               std.lv = TRUE, save.lvs = TRUE, n.chains = 3)
+summary(consc_fit)
+blavInspect(consc_fit, "est")
+
+#Get the posterior distribution of the latent variable conditioned on the
+#observed variables
+consc_fit.lvs <- blavInspect(consc_fit, "lvs") #list of 3, each is 1000 x 564
+consc_post_eta <- rbind(consc_fit.lvs[[1]], consc_fit.lvs[[2]],
+                           consc_fit.lvs[[3]]) #combine the chains
+#The posterior expected value of observed variables conditioned on the sampled latent variables
+consc_fit.ypred <- blavPredict(consc_fit, type = "ypred")
+consc_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode = "list", length = 3000)
+for(i in seq_along(1:length(consc_fit.ypred))){
+  consc_post_z[,i] <- t(rowSums(consc_fit.ypred[[i]]))
+}
+
+consc_post_CAI <- get_posterior_CAI(consc_post_eta, 
+                                    t(consc_post_z), 0.15, consc$sex,
+                                    ref = "2", foc = "1")
+```
+
+### Fit Bayesian CFA and compute posteriors: Extraversion 
+
+```{r bcfa_extr}
+set.seed(7)
+
+extr_fit <- bcfa(m_e, data = extr, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("e1 ~ 1"), 
+               std.lv = TRUE, save.lvs = TRUE, n.chains = 3)
+summary(extr_fit)
+blavInspect(extr_fit, "est")
+
+#Get the posterior distribution of the latent variable conditioned on the
+#observed variables
+extr_fit.lvs <- blavInspect(extr_fit, "lvs") #list of 3, each is 1000 x 564
+extr_post_eta <- rbind(extr_fit.lvs[[1]], extr_fit.lvs[[2]],
+                           extr_fit.lvs[[3]]) #combine the chains
+#The posterior expected value of observed variables conditioned on the sampled latent variables
+extr_fit.ypred <- blavPredict(extr_fit, type = "ypred")
+
+extr_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode = "list", length = 3000)
+for(i in seq_along(1:length(extr_fit.ypred))){
+  extr_post_z[,i] <- t(rowSums(extr_fit.ypred[[i]]))
+}
+
+extr_post_CAI <- get_posterior_CAI(extr_post_eta, 
+                                    t(extr_post_z), 0.15, extr$sex,
+                                    ref = "2", foc = "1")
+```
+
+### Fit Bayesian CFA and compute posteriors: Neuroticism 
+
+```{r bcfa_neur}
+set.seed(7)
+
+neur_fit <- bcfa(m_n, data = neur, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("n1 ~ 1"), 
+               std.lv = TRUE, save.lvs=TRUE, n.chains = 3)
+summary(neur_fit)
+blavInspect(neur_fit, "est")
+
+#Get the posterior distribution of the latent variable conditioned on the
+#observed variables
+neur_fit.lvs <- blavInspect(neur_fit, "lvs") #list of 3, each is 1000 x 564
+neur_post_eta <- rbind(neur_fit.lvs[[1]], neur_fit.lvs[[2]],
+                           neur_fit.lvs[[3]]) #combine the chains
+#The posterior expected value of observed variables conditioned on the sampled latent variables
+neur_fit.ypred <- blavPredict(neur_fit, type = "ypred")
+neur_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode="list", length = 3000)
+for(i in seq_along(1:length(neur_fit.ypred))){
+  neur_post_z[,i] <- t(rowSums(neur_fit.ypred[[i]]))
+}
+
+neur_post_CAI <- get_posterior_CAI(neur_post_eta, 
+                                    t(neur_post_z), 0.15, neur$sex,
+                                    ref="2", foc="1")
+```
+
+### Fit Bayesian CFA and compute posteriors: Openness to Experience 
+
+```{r bcfa_open}
+set.seed(7)
+
+open_fit <- bcfa(m_o, data = open, group = "sex",
+               group.equal = c("loadings", "Intercepts", "residuals"),
+               group.partial = c("i2 ~ 1"), 
+               std.lv = TRUE, save.lvs=TRUE, n.chains = 3)
+summary(open_fit)
+blavInspect(open_fit, "est")
+
+#Get the posterior distribution of the latent variable conditioned on the
+#observed variables
+open_fit.lvs <- blavInspect(open_fit, "lvs") #list of 3, each is 1000 x 564
+open_post_eta <- rbind(open_fit.lvs[[1]], open_fit.lvs[[2]],
+                           open_fit.lvs[[3]]) #combine the chains
+#The posterior expected value of observed variables conditioned on the sampled latent variables
+open_fit.ypred <- blavPredict(open_fit, type = "ypred")
+open_post_z <- matrix(ncol = 3000, nrow = 564)
+rowSums <- vector(mode = "list", length = 3000)
+for(i in seq_along(1:length(open_fit.ypred))){
+  open_post_z[,i] <- t(rowSums(open_fit.ypred[[i]]))
+}
+
+open_post_CAI <- get_posterior_CAI(open_post_eta, 
+                                    t(open_post_z), 0.15, open$sex,
+                                    ref = "2", foc = "1")
+```
+
+
+## Convergence checks of MCMC
+
+### Convergence checks of MCMC: Agreeableness
+```{r agree_convergence_prep}
+# Check for convergence, mixing
+a_mcmc <- blavInspect(agree_fit, "mcmc") # mcmc draws for each parameter
+a_mcmc3 <- rbind(a_mcmc[[1]], a_mcmc[[2]], a_mcmc[[3]]) # combine chains
+a_draws <- a_mcmc3[,c(1:13,18,23,24,28)] # remove duplicates from combined chain
+a_mcmc[[1]] <- a_mcmc[[1]][,c(1:13,18,23,24,28)] # remove duplicates in each chain
+a_mcmc[[2]] <- a_mcmc[[2]][,c(1:13,18,23,24,28)]
+a_mcmc[[3]] <- a_mcmc[[3]][,c(1:13,18,23,24,28)]
+
+colnames(a_draws) <- colnames(a_mcmc[[1]]) <- colnames(a_mcmc[[2]]) <-
+  colnames(a_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                             "Theta_cov_r", "Theta_var1", "Theta_var2", 
+                             "Theta_var3", "Theta_var4", "nu1_r", "nu2", "nu3", 
+                             "nu4", "Theta_cov_f", "Psi_r", "nu1_f", "alpha_f" )
+```
+
+```{r agree-convergence}
+mcmc_trace(a_mcmc, regex_pars=c("lambda", "Psi", "alpha")) 
+mcmc_trace(a_mcmc, regex_pars="Theta") 
+mcmc_trace(a_mcmc, regex_pars="nu")
+mcmc_rank_hist(a_mcmc,regex_pars=c("lambda", "Psi", "alpha"))
+mcmc_rank_hist(a_mcmc,regex_pars=c("Theta"))
+mcmc_rank_hist(a_mcmc,regex_pars=c("nu"))
+```
+
+
+### Convergence checks of MCMC: Conscientiousness
+
+
+```{r consc_convergence_prep}
+# Check for convergence, mixing
+c_mcmc <- blavInspect(consc_fit, "mcmc") # mcmc draws for each parameter
+c_mcmc3 <- rbind(c_mcmc[[1]], c_mcmc[[2]], c_mcmc[[3]]) # combine chains
+c_draws <- c_mcmc3[,c(1:12, 21, 26)] # remove duplicates from combined chain
+c_mcmc[[1]] <- c_mcmc[[1]][,c(1:12, 21, 26)] # remove duplicates in each chain
+c_mcmc[[2]] <- c_mcmc[[2]][,c(1:12, 21, 26)]
+c_mcmc[[3]] <- c_mcmc[[3]][,c(1:12, 21, 26)]
+
+colnames(c_draws) <- colnames(c_mcmc[[1]]) <- colnames(c_mcmc[[2]]) <-
+  colnames(c_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                            "Theta_var1", "Theta_var2", "Theta_var3", "Theta_var4",
+                            "nu1", "nu2", "nu3", "nu4", 
+                            "Psi_f", "alpha_f" )
+```
+
+```{r c-convergence}
+mcmc_trace(c_mcmc, regex_pars=c("lambda", "Psi", "alpha")) 
+mcmc_trace(c_mcmc, regex_pars="Theta") 
+mcmc_trace(c_mcmc, regex_pars="nu")
+mcmc_rank_hist(c_mcmc,regex_pars=c("lambda", "Psi", "alpha"))
+mcmc_rank_hist(c_mcmc,regex_pars=c("Theta"))
+mcmc_rank_hist(c_mcmc,regex_pars=c("nu"))
+```
+
+
+### Convergence checks of MCMC: Extraversion
+
+```{r extr_convergence_prep}
+# Check for convergence, mixing
+e_mcmc <- blavInspect(extr_fit, "mcmc") # mcmc draws for each parameter
+e_mcmc3 <- rbind(e_mcmc[[1]], e_mcmc[[2]], e_mcmc[[3]]) # combine chains
+e_draws <- e_mcmc3[,c(1:13,18,23,24,28)] # remove duplicates from combined chain
+e_mcmc[[1]] <- e_mcmc[[1]][,c(1:13,18,23,24,28)] # remove duplicates in each chain
+e_mcmc[[2]] <- e_mcmc[[2]][,c(1:13,18,23,24,28)]
+e_mcmc[[3]] <- e_mcmc[[3]][,c(1:13,18,23,24,28)]
+
+colnames(e_draws) <- colnames(e_mcmc[[1]]) <- colnames(e_mcmc[[2]]) <-
+  colnames(e_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                             "Theta_cov_r", "Theta_var1", "Theta_var2", 
+                             "Theta_var3", "Theta_var4", "nu1_r", "nu2", "nu3", 
+                             "nu4", "Theta_cov_f", "Psi_r", "nu1_f", "alpha_f" )
+```
+
+```{r e-convergence}
+mcmc_trace(e_mcmc, regex_pars=c("lambda", "Psi", "alpha")) 
+mcmc_trace(e_mcmc, regex_pars="Theta") 
+mcmc_trace(e_mcmc, regex_pars="nu")
+mcmc_rank_hist(e_mcmc,regex_pars=c("lambda", "Psi", "alpha"))
+mcmc_rank_hist(e_mcmc,regex_pars=c("Theta"))
+mcmc_rank_hist(e_mcmc,regex_pars=c("nu"))
+```
+
+### Convergence checks of MCMC: Neuroticsm
+
+
+```{r n_convergence_prep}
+# Check for convergence, mixing
+n_mcmc <- blavInspect(neur_fit, "mcmc") # mcmc draws for each parameter
+n_mcmc3 <- rbind(n_mcmc[[1]], n_mcmc[[2]], n_mcmc[[3]]) # combine chains
+n_draws <- n_mcmc3[,c(1:12, 21, 26)] # remove duplicates from combined chain
+n_mcmc[[1]] <- n_mcmc[[1]][,c(1:12, 21, 26)] # remove duplicates in each chain
+n_mcmc[[2]] <- n_mcmc[[2]][,c(1:12, 21, 26)]
+n_mcmc[[3]] <- n_mcmc[[3]][,c(1:12, 21, 26)]
+
+colnames(n_draws) <- colnames(n_mcmc[[1]]) <- colnames(n_mcmc[[2]]) <-
+  colnames(n_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                            "Theta_var1", "Theta_var2", "Theta_var3", "Theta_var4",
+                            "nu1", "nu2", "nu3", "nu4", 
+                            "Psi_f", "alpha_f" )
+```
+
+```{r n-convergence}
+mcmc_trace(n_mcmc, regex_pars=c("lambda", "Psi", "alpha")) 
+mcmc_trace(n_mcmc, regex_pars="Theta") 
+mcmc_trace(n_mcmc, regex_pars="nu")
+mcmc_rank_hist(n_mcmc,regex_pars=c("lambda", "Psi", "alpha"))
+mcmc_rank_hist(n_mcmc,regex_pars=c("Theta"))
+mcmc_rank_hist(n_mcmc,regex_pars=c("nu"))
+```
+
+
+
+### Convergence checks of MCMC: Openness to Experience
+
+```{r open_convergence_prep}
+# Check for convergence, mixing
+o_mcmc <- blavInspect(open_fit, "mcmc") # mcmc draws for each parameter
+o_mcmc3 <- rbind(o_mcmc[[1]], o_mcmc[[2]], o_mcmc[[3]]) # combine chains
+o_draws <- o_mcmc3[,c(1:14, 19, 20,  25, 26, 30)] # remove duplicates from combined chain
+o_mcmc[[1]] <- o_mcmc[[1]][,c(1:14, 19, 20,  25, 26, 30)] # remove duplicates in each chain
+o_mcmc[[2]] <- o_mcmc[[2]][,c(1:14, 19, 20, 25, 26, 30)]
+o_mcmc[[3]] <- o_mcmc[[3]][,c(1:14, 19, 20,  25, 26, 30)]
+
+colnames(o_draws) <- colnames(o_mcmc[[1]]) <- colnames(o_mcmc[[2]]) <-
+  colnames(o_mcmc[[3]]) <- c("lambda1", "lambda2", "lambda3", "lambda4", 
+                             "Theta_cov_r1", "Theta_cov_r2",
+                             "Theta_var1", "Theta_var2","Theta_var3", "Theta_var4",
+                             "nu1_r", "nu2", "nu3", "nu4", 
+                             "Theta_cov_f1","Theta_cov_f2", 
+                             "Psi_r", "nu1_f", "alpha_f" )
+```
+
+```{r o-convergence}
+mcmc_trace(o_mcmc, regex_pars=c("lambda", "Psi", "alpha")) 
+mcmc_trace(o_mcmc, regex_pars="Theta") 
+mcmc_trace(o_mcmc, regex_pars="nu")
+mcmc_rank_hist(o_mcmc,regex_pars=c("lambda", "Psi", "alpha"))
+mcmc_rank_hist(o_mcmc,regex_pars=c("Theta"))
+mcmc_rank_hist(o_mcmc,regex_pars=c("nu"))
+```
+```{r priors}
+# default priors, same for all
+blavInspect(agree_fit, "dp")
+blavInspect(consc_fit, "dp")
+blavInspect(extr_fit, "dp")
+blavInspect(neur_fit, "dp")
+blavInspect(open_fit, "dp")
+```
+
+
+## Posterior summaries of MCMC draws for model parameters
+
+### Posterior summaries: Agreeableness model parameters
+
+```{r a_summary}
+a_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+
+### Posterior summaries: Conscientiousness model parameters
+
+```{r c_summary}
+c_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+### Posterior summaries: Extraversion model parameters
+
+```{r e_summary}
+e_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+
+### Posterior summaries: Neuroticism model parameters
+
+```{r n_summary}
+n_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+
+### Posterior summaries: Openness to Experience model parameters
+
+```{r o_summary}
+o_mcmc %>% summarize_draws() %>% knitr::kable(digits = 2)
+```
+
+
+
+```{r overall_CAI_summaries}
+
+a_cai_summary <- summarize_draws(agree_post_CAI$overall)
+a_cai_summary[,2:8] <- round(a_cai_summary[,2:8],2)
+a_cai_summary[,9:10] <- round(a_cai_summary[,9:10])
+a_cai_summary%>% knitr::kable()
+c_cai_summary <- summarize_draws(consc_post_CAI$overall)
+c_cai_summary[,2:8] <- round(c_cai_summary[,2:8],2)
+c_cai_summary[,9:10] <- round(c_cai_summary[,9:10])
+c_cai_summary%>% knitr::kable()
+e_cai_summary <- summarize_draws(extr_post_CAI$overall)
+e_cai_summary[,2:8] <- round(e_cai_summary[,2:8],2)
+e_cai_summary[,9:10] <- round(e_cai_summary[,9:10])
+e_cai_summary%>% knitr::kable()
+n_cai_summary <- summarize_draws(neur_post_CAI$overall)
+n_cai_summary[,2:8] <- round(n_cai_summary[,2:8],2)
+n_cai_summary[,9:10] <- round(n_cai_summary[,9:10])
+n_cai_summary%>% knitr::kable()
+o_cai_summary <- summarize_draws(open_post_CAI$overall)
+o_cai_summary[,2:8] <- round(o_cai_summary[,2:8],2)
+o_cai_summary[,9:10] <- round(o_cai_summary[,9:10])
+o_cai_summary%>% knitr::kable()
+```
+
+```{r ref_CAI_summaries}
+a_cai_summaryr <- summarize_draws(agree_post_CAI$reference)
+a_cai_summaryr[,2:8] <- round(a_cai_summaryr[,2:8],2)
+a_cai_summaryr[,9:10] <- round(a_cai_summaryr[,9:10])
+a_cai_summaryr%>% knitr::kable()
+c_cai_summaryr <- summarize_draws(consc_post_CAI$reference)
+c_cai_summaryr[,2:8] <- round(c_cai_summaryr[,2:8],2)
+c_cai_summaryr[,9:10] <- round(c_cai_summaryr[,9:10])
+c_cai_summaryr%>% knitr::kable()
+e_cai_summaryr <- summarize_draws(extr_post_CAI$reference)
+e_cai_summaryr[,2:8] <- round(e_cai_summaryr[,2:8],2)
+e_cai_summaryr[,9:10] <- round(e_cai_summaryr[,9:10])
+e_cai_summaryr%>% knitr::kable()
+n_cai_summaryr <- summarize_draws(neur_post_CAI$reference)
+n_cai_summaryr[,2:8] <- round(n_cai_summaryr[,2:8],2)
+n_cai_summaryr[,9:10] <- round(n_cai_summaryr[,9:10])
+n_cai_summaryr%>% knitr::kable()
+o_cai_summaryr <- summarize_draws(open_post_CAI$reference)
+o_cai_summaryr[,2:8] <- round(o_cai_summaryr[,2:8],2)
+o_cai_summaryr[,9:10] <- round(o_cai_summaryr[,9:10])
+o_cai_summaryr%>% knitr::kable()
+```
+
+
+```{r f_CAI_summaries}
+
+a_cai_summaryf <- summarize_draws(agree_post_CAI$focal)
+a_cai_summaryf[,2:8] <- round(a_cai_summaryf[,2:8],2)
+a_cai_summaryf[,9:10] <- round(a_cai_summaryf[,9:10])
+a_cai_summaryf%>% knitr::kable()
+c_cai_summaryf <- summarize_draws(consc_post_CAI$focal)
+c_cai_summaryf[,2:8] <- round(c_cai_summaryf[,2:8],2)
+c_cai_summaryf[,9:10] <- round(c_cai_summaryf[,9:10])
+c_cai_summaryf%>% knitr::kable()
+e_cai_summaryf <- summarize_draws(extr_post_CAI$focal)
+e_cai_summaryf[,2:8] <- round(e_cai_summaryf[,2:8],2)
+e_cai_summaryf[,9:10] <- round(e_cai_summaryf[,9:10])
+e_cai_summaryf%>% knitr::kable()
+n_cai_summaryf <- summarize_draws(neur_post_CAI$focal)
+n_cai_summaryf[,2:8] <- round(n_cai_summaryf[,2:8],2)
+n_cai_summaryf[,9:10] <- round(n_cai_summaryf[,9:10])
+n_cai_summaryf%>% knitr::kable()
+o_cai_summaryf <- summarize_draws(open_post_CAI$focal)
+o_cai_summaryf[,2:8] <- round(o_cai_summaryf[,2:8],2)
+o_cai_summaryf[,9:10] <- round(o_cai_summaryf[,9:10])
+o_cai_summaryf%>% knitr::kable()
+```
+
+
+## Posterior distributions of classification accuracy indices
+
+### Agreeableness, group: F
+
+```{r}
+mcmc_areas(agree_post_CAI$reference, pars = c( "SR", "SE", "SP"))
+```
+
+### Agreeableness, group: M
+
+```{r}
+mcmc_areas(agree_post_CAI$focal, pars = c( "SR", "SE", "SP"))
+```
+
+### Conscientiousness, group: F
+
+```{r}
+mcmc_areas(consc_post_CAI$reference, pars = c( "SR", "SE", "SP"))
+```
+
+### Conscientiousness, group: M
+
+```{r}
+mcmc_areas(consc_post_CAI$focal, pars = c( "SR", "SE", "SP"))
+```
+
+### Extraversion, group: F
+
+```{r}
+mcmc_areas(extr_post_CAI$reference, pars = c( "SR", "SE", "SP"))
+```
+
+### Extraversion, group: M
+
+```{r}
+mcmc_areas(extr_post_CAI$focal, pars = c( "SR", "SE", "SP"))
+```
+
+### Neuroticism, group: F
+
+```{r}
+mcmc_areas(neur_post_CAI$reference, pars = c( "SR", "SE", "SP"))
+```
+
+### Neuroticism, group: M
+
+```{r}
+mcmc_areas(neur_post_CAI$focal, pars = c( "SR", "SE", "SP"))
+```
+
+### Openness to Experience, group: F
+
+```{r}
+mcmc_areas(open_post_CAI$reference, pars = c( "SR", "SE", "SP"))
+```
+
+### Openness to Experience, group: M
+
+```{r}
+mcmc_areas(open_post_CAI$focal, pars = c( "SR", "SE", "SP"))
+```
+
+
+
+
+## Posterior distribution of Cohen's h computed for the difference in classification accuracy indices
+
+\begin{align}
+    \text{h} = 2\text{arcsin}\left(\sqrt{\text{CAI}_1}\right)-2\text{arcsin}\left(\sqrt{\text{CAI}_2}\right)
+\end{align}
+
+```{r h-summaries}
+# Agreeableness
+agree_h <- summarize_draws(agree_post_CAI$h)
+agree_h[,2:8] <- round(agree_h[,2:8],2)
+agree_h[,9:10] <- round(agree_h[,9:10])
+agree_h %>% knitr::kable()
+# Conscientiousness
+consc_h <- summarize_draws(consc_post_CAI$h)
+consc_h[,2:8] <- round(consc_h[,2:8],2)
+consc_h[,9:10] <- round(consc_h[,9:10])
+consc_h %>% knitr::kable()
+# Extraversion
+extra_h <- summarize_draws(extr_post_CAI$h)
+extra_h[,2:8] <- round(extra_h[,2:8],2)
+extra_h[,9:10] <- round(extra_h[,9:10])
+extra_h %>% knitr::kable()
+# Neuroticism
+neur_h <- summarize_draws(neur_post_CAI$h)
+neur_h[,2:8] <- round(neur_h[,2:8],2)
+neur_h[,9:10] <- round(neur_h[,9:10])
+neur_h %>% knitr::kable()
+# Openness to Experience
+open_h <- summarize_draws(open_post_CAI$h)
+open_h[,2:8] <- round(open_h[,2:8],2)
+open_h[,9:10] <- round(open_h[,9:10])
+open_h %>% knitr::kable()
+```
+
+
+
+### Posterior distribution of Cohen's h
+
+```{r h areas}
+par(mfrow=c(2,3))
+# Agreeableness
+mcmc_areas(agree_post_CAI$h)
+# Conscientiousness
+mcmc_areas(consc_post_CAI$h)
+# Extraversion
+mcmc_areas(extr_post_CAI$h)
+# Neuroticism
+mcmc_areas(neur_post_CAI$h)
+# Openness to Experience
+mcmc_areas(open_post_CAI$h)
+```
+
+
+
+
+
+
